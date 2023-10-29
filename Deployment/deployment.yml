@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysimple-deployment
+spec:
+  replicas: 6
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: mysimple
+  template:
+    metadata:
+      labels:
+        app: mysimple
+    spec:
+      containers:
+      - name: mysimple
+        image: saratankala8717/mysimplewebsite:v1
+        ports:
+        - containerPort: 80
