@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mynginxacrpod
+  labels:
+    appname: nginxapp
+spec:
+  containers:
+  - name: mynginxpod
+    image: myacr8717.azurecr.io/nginx:v1
+    ports:
+      - containerPort: 80
