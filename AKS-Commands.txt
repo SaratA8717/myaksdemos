@@ -1,0 +1,349 @@
+# Command to Create resourcegroup #
+az group create -l eastus -n aks-rg
+
+#### Command to create AKS Cluster with 2 Nodes & Default Options ####
+az aks create -g aks-rg -n Myakscluster --node-count 1
+# Create a kubernetes cluster with supporting Windows agent pools#
+az aks create -g aks-rg -n MyManagedCluster1 --load-balancer-sku Standard --network-plugin azure --windows-admin-username azureuser --windows-admin-password 'Mypassword@123456789'
+
+#### Command to create AKS Cluster with AvailabilitySet Nodes ####
+az aks create -resourcegroup aks-rg -n aks-vmas --vms-set-type AvailabilitySet --node-count 2
+
+#### command to run debug pod to troubleshoot nodes ####
+
+kubectl debug node/aks-nodepool1-41316727-vmss000000 -it --image=mcr.microsoft.com/dotnet/runtime-deps:6.0
+
+# Invoke Run command on AKS Nodes #
+az vmss run-command invoke -g MC_aks-rg_MyManagedCluster_eastus -n aks-nodepool1-83216790-vmss --instance-id 0 --command-id RunShellScript --query 'value[0].message' -otsv --scripts "nc -vz microsofft.com 443"
+
+# Command to Create Windows Node Pool #
+
+az aks nodepool add -g aks-rg -n winpool1 --cluster-name MyManagedCluster --os-sku Windows --node-count 1
+az aks nodepool add --resource-group aks-rg --cluster-name MyManagedCluster --os-type Windows --name npwin --node-count 1
+
+***** Process to Connec to Windows Node using SSH *****
+
+Step 1 - Update Password for Windows Servers on the cluster (username azureuser)
+az aks update -g aks-rg -n aks-w --windows-admin-password Test@123456789
+
+Create SSH POD 
+
+k exec -it ssh-pod -- bash 
+
+To connect to Windows Node use the command 
+
+sshpass -p "Mypassword@123456789" ssh -o strictHostKeyChecking=no azureuser@akswpool000000
+
+
+
+###  Command to Create Mariner Node Pool #
+
+az aks nodepool add --resource-group aks-rg --cluster-name MyManagedCluster --name marinerAzureLinux pool --os-sku Mariner --mode user --node-count 1 -s Standard_b2s --node-taints application=ERM:NoSchedule
+
+cat /etc/os-release
+
+****** Command to Create Node Pool Ephemeral Disks *****
+az aks nodepool add --name Ephemeral --cluster-name MyManagedCluster --resource-group aks-rg -s Standard_B4ms --node-osdisk-type Ephemeral --node-osdisk-size 30 --node-count 1
+
+****** Command to Create Node Pool Managed  Disks *****
+
+az aks nodepool add --name Ephemeral --cluster-name MyManagedCluster --resource-group aks-rg -s Standard_B4ms --node-osdisk-type Managed --node-osdisk-size 30 --node-count 1
+
+### Create Public AKS Cluster with VNET Integration ####
+
+az aks create -n <clustername> -g <resourcegroup> --enable-apiserver-vnet-integration
+
+az aks create -n MyManagedCluster -g azure-sara-rg --enable-apiserver-vnet-integration
+
+az aks show -n <clustername> -g <resourcegroup> --query fqdn
+
+nslookup <>
+
+az aks show -n <clustername> -g <resourcegroup> --query privateFqdn
+
+
+#### Create Private AKS CLuster with VNET Integration ####
+
+az aks create -n <clustername> -g <resourcegroup> --enable-apiserver-vnet-integration --enable-private-cluster 
+
+az aks create -n myprivateaks -g azure-sara-rg --enable-apiserver-vnet-integration --enable-private-cluster
+
+#### AKS OutboundType LoadBalancer (Default) ####
+
+az aks create -g <resourcegroup> -n <clustername> --enable-managed-identity --Outbound-Type LoadBalancer 
+
+az aks create -n MyManagedCluster -g azure-sara-rg --enable-managed-identity --Outbound-Type LoadBalancer
+
+LoadBalancer SNAT Port Exhaustion
+
+az aks update -g azure-sara-rg -n MyManagedCluster --load-balancer-managed-outbound-ip-count 3
+
+#### AKS OutboundType ManagedNATGateway ####
+
+az aks create -g <resourcegroup> -n <clustername> --outbound-type ManagedNATGateway --nat-gateway-managed-outbound-ip-count 2 --nat-gateway-idle-timeout 4
+
+az aks create -g azure-sara-rg -n MyManagedCluster --outbound-type ManagedNATGateway --nat-gateway-managed-outbound-ip-count 2 --nat-gateway-idle-timeout 4
+
+#### AKS OutboundType AzureFirewall ####
+
+Creating Route Table Firewawall, vnet Public ip
+
+az aks create -g <resourcegroup> -n <clustername> -l <location> --node-cout 2 --network-plugin azure --outbound-type userDefinedRouting --vnet-subnet-id <subnetID>
+
+### SSH using Bastion Host into Linux Node ##
+
+ssh-keygen -m PEM -t rsa -b 4096  ## To Generate SSH Keys ###
+
+###############################################################
+
+az extension list-available --output table | grep -i -e installed -e aks-preview
+
+az extension add --name aks-preview
+
+az extension update --name aks-preview
+
+
+##### Node Pool Snapshots #######
+
+In order to take a snapshot from a node pool, you need the node pool resource ID, which you can get from the following command:
+
+$NODEPOOL_ID = $(az aks nodepool show --name nodepool1 --cluster-name MyManagedCluster1 --resource-group aks-rg --query id -o tsv)
+
+Now, to take a snapshot from the previous node pool, you use the az aks snapshot CLI command.
+
+az aks nodepool snapshot create --name MySnapshot --resource-group aks-rg  --nodepool-id $NODEPOOL_ID --location eastus
+
+Create a node pool from a snapshot
+
+    First, you need the resource ID from the snapshot that was previously created, which you can get from the following command:
+  
+    $SNAPSHOT_ID = $(az aks nodepool snapshot show --name MySnapshot --resource-group aks-rg --query id -o tsv)
+
+    Now, we can use the following command to add a new node pool based off of this snapshot.
+
+    az aks nodepool add --name np2 --cluster-name MyManagedCluster1 --resource-group aks-rg --snapshot-id $SNAPSHOT_ID
+
+//**** Creating AKS Cluster with NAT gateway  ****//
+
+az aks create --resourcegroup natrg --name natcluster --node-count 2 --outbound-type ManagedNATGateway --nat-gateway-managed-outbound-ip-count 2 --nat-gateway-idle-timeout 4
+
+//**** Cluster Creation using Application Gateway Ingress Controllers    ****//
+
+az group create -l eastus -n aks-agic-rg
+
+kubectl creat deploy my-simple-website --image andreibarbu95/my-simple-website:v1
+
+kubectl expose deploy my-simple-website --type=LoadBalancer --port 80 --name my-simple-website-service
+
+
+// **** Azure Container Registry **** //
+
+# Creation of resource group #
+az group create -l eastus -n aks-acr-rg
+
+# Creation of AKS Cluster for Demo ACR #
+
+az aks create -g aks-acr-rg -n aks-acr -c 2
+
+Importing Images from Docker Registry
+
+az acr import -n myacr8717  --source docker.io/library/nginx:latest --image nginx:v1
+
+az acr import -n myaksregistry8717 --source docker.io/andreibarbu95/my-simple-website:v1 --image my-simple-website:v1
+
+
+
+### attatching Kubelet managed identity to ACR Registry to pull images  ####
+
+az aks update -n aks-acr -g aks-acr-rg --attach-acr myacr8717
+
+## Command To Dettatch ### 
+
+az aks update -n aks-acr -g aks-acr-rg --detach-acr myacr8717
+
+
+### Command to use Admin Integration ####
+
+kubectl create secret docker-Registry acr-admin-cred --docker-server=<your-Registry-server> --docker-username=<your-name> --docker-password=<your-pwd>
+
+ kubectl create secret docker-registry acr-admin-cred --docker-server=myaksregistry8717.azurecr.io --docker-username=myaksregistry8717 --docker-password=uGmlPA4q8BvOG5SL3Q4TeMo2HknbEQgPwVzeH5Kg8T+ACRDIBu2g
+
+
+############ AKS Storage ###############
+
+*** creating PVC & Mounting PVC as Volume to POD *****
+
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/pvc-azuredisk-csi.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/nginx-pod-azuredisk.yaml
+
+
+kubectl exec nginx-azuredisk1 -- touch /mnt/azuredisk/test.txt
+
+kubectl exec nginx-azuredisk1 -- ls /mnt/azuredisk
+
+****** TO Create Volume Snapshot Class & Snapshot of a Volume ****************
+
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/snapshot/storageclass-azuredisk-snapshot.yaml
+
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/snapshot/azuredisk-volume-snapshot.yaml
+
+kubectl describe volumesnapshot azuredisk-volume-snapshot
+
+*** Creating PVC from Snapshot & Mounting as volume to POD from Restored DIsk **************
+
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/snapshot/pvc-azuredisk-snapshot-restored.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/deploy/example/snapshot/nginx-pod-restored-snapshot.yaml
+
+
+kubectl exec nginx-restored -- ls /mnt/azuredisk
+
+
+
+kubectl exec -it nginx-azuredisk1 -- sh
+
+df -h /mnt/azuredisk
+
+dd if=/dev/urandom of=largefile1 bs=1M count=9000
+
+dd if=/dev/urandom of=largefile1 bs=1M count=2000
+
+kubectl patch pvc pvc-azuredisk-snapshot-restored --type merge --patch '{"spec":{"resources":{"requests":{"storage":"15Gi"}}}}'
+
+kubectl patch pvc pvc-azuredisk-snapshot-restored --type merge --patch '{"spec": {"resources": {"requests": {"storage": "15Gi"}}}}'
+
+
+#### Static Creation of Azure File Share ####
+
+Command to get Infrastructure resourcegroup
+
+az aks show --resource-group aks-rg --name aks-disk --query nodeResourceGroup -o tsv 
+
+az storage account create -n myaksaccount8717 -g  MC_aks-rg_aks-disk_eastus -l eastus --sku Standard_LRS
+
+Step 1-
+Creating a Storage account Manually 
+
+az storage account create -n myAKSStorageAccount -g nodeResourceGroupName -l location --sku Standard_LRS
+
+Step 2 - 
+Export Connection String Environment using following command
+
+export AZURE_STORAGE_CONNECTION_STRING=$(az storage account show-connection-string -n storageAccountName -g resourceGroupName -o tsv)
+
+
+Step 3
+
+Create the file share
+
+az storage share create -n shareName --connection-string $AZURE_STORAGE_CONNECTION_STRING
+
+
+Step 4 
+Export the storage account key as an environment variable using the following command.
+
+$STORAGE_KEY=$(az storage account keys list --resource-group MC_aks-rg_aks-disk_eastus --account-name myAKSStorageAccount --query "[0].value" -o tsv)
+
+Step 5 -
+
+Echo the storage account name and key using the following command. Copy this information, as you need these values when creating the Kubernetes volume.
+
+echo Storage account key: $STORAGE_KEY
+
+Step 6 - 
+
+Create Kubernetes secret with exported storage account key
+
+kubectl create secret generic azure-secret --from-literal=azurestorageaccountname=myaksaccount8717 --from-literal=azurestorageaccountkey=$STORAGE_KEY
+
+Step 7 -
+Command to Get Unique Volume ID
+az storage share-rm show -g MC_aks-rg_aks-disk_eastus --storage-account myaksaccount8717 --name myaksshare -o tsv --query id
+
+/subscriptions/b24463fc-faed-4708-bcec-fdddbde965fc/resourceGroups/MC_aks-rg_aks-disk_eastus/providers/Microsoft.Storage/storageAccounts/myaksaccount8717/fileServices/default/shares/myaksshare
+
+/subscriptions/b24463fc-faed-4708-bcec-fdddbde965fc/resourceGroups/MC_aks-rg_aks-disk_eastus/providers/Microsoft.Storage/storageAccounts/myaksaccount8717
+
+
+
+#### Application Gateway Ingress Controller Deployment #####
+
+az group create -l eastus -n aks-agic-rg
+
+az aks create -n aks-agic -g aks-agic-rg --network-plugin azure --enable-managed-identity -a ingress-appgw --appgw-name myApplicationGateway --appgw-subnet-cidr "10.225.0.0/16"
+
+az aks get-credentials -n aks-agic -g aks-agic-rg
+
+kubectl create deploy my-simple-website --image andreibarbu95/my-simple-website:v1
+kubectl expose my-simple-website --port 80 --name my-simple-website-svc
+
+kubectl logs -n kube-system ingress-appgw-deployment
+
+#### Ingress Controller in AKS #####
+
+az group create -l eastus -n aks-nginx-ic-rg
+
+az aks create -g aks-nginx-ic-rg -n aks-nginx-ic
+
+From Documentation - https://learn.microsoft.com/en-us/azure/aks/ingress-basic?tabs=azure-cli
+
+NAMESPACE=ingress-basic
+
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-basic --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path"=/healthz
+
+
+######################################################
+How to View Certificates & Rotate for AKS Cluster
+
+Ssh into any node 
+
+cd /etc/kubernetes/certs 
+ls
+
+openssl x509 -in <certname> -noout -enddate
+
+ca cert validity is for 30 Years
+kubelet server cert is for 20 Years
+apiserver cert is for 2 Years
+
+
+kubectl exec -it <podname> -- bash
+
+
+######### Azure Key Vault for secret #################
+
+#Create AKS Cluster with azure-keyvault-secrets-provider add-on
+
+az aks create -n aks-csi-secret -g aks-rg --enable-addons azure-keyvault-secrets-provider -c 2
+
+# Create Azure keyvault resource
+az keyvault create -n aks-kv-8717 -g aks-rg
+
+# Create secret within azure keyvault
+
+az keyvault secret set --vault-name aks-kv-8717 -n AKSTestSecret --value SecretPa$$0rd199
+
+# allow secrets store CSI driver to access Azure Key Vault using CSI secret addon user-managed identity
+az aks show -g aks-rg -n aks-csi-secret --query addonProfiles.azurekeyvaultSecretsProvider-aks.identity.clientId -o tsv
+
+c4c1465c-76d7-459d-9ca0-ed5f61224c4c
+
+# Set Key Vault Policy to access keys, secrets & certs in Azure Key Vault
+
+az keyvault set-Policy -n aks-kv-8717 --key-permissions get --spn c4c1465c-76d7-459d-9ca0-ed5f61224c4c
+
+az keyvault set-Policy -n aks-kv-8717 --secret-permissions get --spn c4c1465c-76d7-459d-9ca0-ed5f61224c4c
+
+az keyvault set-Policy -n aks-kv-8717 --certificate-permissions get --spn c4c1465c-76d7-459d-9ca0-ed5f61224c4c
+
+How to use autorotation for Azure Key Vault secret Provider addon
+kubectl get crd
+
+az aks addon update -g aks-rg -n aks-csi-secret -a azure-keyvault-secrets-provider --enable-secret-rotation --rotation-poll-interval 1m
+
+
+## COmmand to Create Cluster Role in Kubernetes #####
+
+kubectl create clusterrole <nameofrole> --verb=get,list,watch (permissions) --resource=secrets (resource type)
